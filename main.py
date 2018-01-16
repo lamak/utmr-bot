@@ -4,18 +4,19 @@ import logging
 import xml.etree.ElementTree as ET
 import requests
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
-from settings import *
-
+import settings
 
 logging.basicConfig(level=logging.DEBUG,
                     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
-updater = Updater(token=telegram_token)
+
+updater = Updater(token=settings.telegram_token)
 dispatcher = updater.dispatcher
 xml_query = 'query.xml'
 
+
 def fast_get(server_name: str):
-    server_domain_name = server_name + domain
+    server_domain_name = server_name + settings.domain
     url = 'http://{0}:8080/diagnosis'.format(server_domain_name)
     try:
         for x in ET.fromstring(requests.get(url, timeout=2).text).findall('CN'):
@@ -29,7 +30,7 @@ def fast_get(server_name: str):
 
 def fsrar_get(server_name: str):
     fsrar, error = '', ''
-    server_domain_name = server_name + domain
+    server_domain_name = server_name + settings.domain
     url = 'http://{0}:8080/diagnosis'.format(server_domain_name)
     try:
         for x in ET.fromstring(requests.get(url, timeout=2).text).findall('CN'):
@@ -58,7 +59,8 @@ def xml_make(fsrar: str):
 
 def xml_send(server_name: str):
     status = ''
-    url = 'http://' + server_name + domain + ':8080/opt/in/QueryClients_v2'
+    server_domain_name = server_name + settings.domain
+    url = 'http://{0}:8080/opt/in/QueryClients_v2'.format(server_domain_name)
     try:
         files = {'xml_file': (xml_query, open(xml_query, 'rb'), 'application/xml')}
         r = requests.post(url, files=files)
@@ -78,7 +80,7 @@ def startCommand(bot, update):
 
 def statusCommand(bot, update):
     raw_data = []
-    for server in utm:
+    for server in settings.utm:
         raw_data.append(fast_get(server))
     results = '\n'.join([i for i in raw_data])
     bot.send_message(chat_id=update.message.chat_id,
@@ -87,7 +89,7 @@ def statusCommand(bot, update):
 
 def textMessage(bot, update):
     utm_server = update.message.text
-    pattern = re.compile(re_pattern)
+    pattern = re.compile(settings.re_pattern)
     if pattern.match(utm_server):
         fsrarid, step1, step2, step3 = '', '', '', ''
         fsrarid, step1 = fsrar_get(utm_server)
