@@ -1,10 +1,10 @@
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
-from settings import *
-import xml.etree.ElementTree as ET
-import requests
+import re
 import os
 import logging
-import re
+import xml.etree.ElementTree as ET
+import requests
+from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
+from settings import *
 
 
 logging.basicConfig(level=logging.DEBUG,
@@ -12,40 +12,52 @@ logging.basicConfig(level=logging.DEBUG,
 
 updater = Updater(token=telegram_token)
 dispatcher = updater.dispatcher
+xml_query = 'query.xml'
+
+def fast_get(server_name: str):
+    server_domain_name = server_name + domain
+    url = 'http://{0}:8080/diagnosis'.format(server_domain_name)
+    try:
+        for x in ET.fromstring(requests.get(url, timeout=2).text).findall('CN'):
+            fsrar = server_name + ' OK'
+    except requests.ConnectionError:
+        fsrar = server_name + ' error'
+    except requests.ReadTimeout:
+        fsrar = server_name + ' timeout'
+    return fsrar
 
 
 def fsrar_get(server_name: str):
-    fsrar, comment = '', ''
-    url = 'http://' + server_name + domain + ':8080/diagnosis'
+    fsrar, error = '', ''
+    server_domain_name = server_name + domain
+    url = 'http://{0}:8080/diagnosis'.format(server_domain_name)
     try:
-        for x in ET.fromstring(requests.get(url, timeout=1).text).findall('CN'):
+        for x in ET.fromstring(requests.get(url, timeout=2).text).findall('CN'):
             fsrar = x.text
-    except requests.ConnectionError:
-        server_domain_name = server_name + domain
-        # if os.system('ping %s -n 4 > NUL' % (server_name,)):
-        if os.system('ping %s -c 2 > NUL' % (server_domain_name,)):
-            comment = 'Пинга нет'
+    except (requests.ConnectionError, requests.ReadTimeout):
+        # if os.system('ping %s -c 2 > NUL' % (server_domain_name,)):
+        if os.system('ping %s -n 2 > NUL' % (server_name,)):
+            error = 'Пинга нет'
         else:
-            comment = 'Пинг есть, УТМ недоступен'
-        # comment = 'УТМ недоступен'
-    return fsrar, comment
+            error = 'Пинг есть, УТМ недоступен'
+    return fsrar, error
 
 
 def xml_make(fsrar: str):
-    comment = ''
-    if len(fsrar) > 1:
+    error = ''
+    if fsrar:
         try:
             tree = ET.parse(xml_query)
             root = tree.getroot()
             root[0][0].text, root[1][0][0][0][1].text = fsrar, fsrar
             tree.write(xml_query)
         except:
-            comment = 'Не удалось сформировать XML'
-    return comment
+            error = 'Не удалось сформировать XML'
+    return error
 
 
 def xml_send(server_name: str):
-    status, comment = '', ''
+    status = ''
     url = 'http://' + server_name + domain + ':8080/opt/in/QueryClients_v2'
     try:
         files = {'xml_file': (xml_query, open(xml_query, 'rb'), 'application/xml')}
@@ -61,29 +73,40 @@ def xml_send(server_name: str):
 
 def startCommand(bot, update):
     bot.send_message(chat_id=update.message.chat_id,
-                     text='Напиши сервер с УТМ, я проверю статус')
+                     text='Введите сервер с утм для проверки')
+
+
+def statusCommand(bot, update):
+    raw_data = []
+    for server in utm:
+        raw_data.append(fast_get(server))
+    results = '\n'.join([i for i in raw_data])
+    bot.send_message(chat_id=update.message.chat_id,
+                     text=results)
 
 
 def textMessage(bot, update):
     utm_server = update.message.text
     pattern = re.compile(re_pattern)
     if pattern.match(utm_server):
-        step1, step2,status = '','',''
+        fsrarid, step1, step2, step3 = '', '', '', ''
         fsrarid, step1 = fsrar_get(utm_server)
-        if len(fsrarid) > 1:
+        if fsrarid:
             step2 = xml_make(fsrarid)
-            status = xml_send(utm_server)
-            response = update.message.text + ' ' + fsrarid + ' ' + step1 + ' ' + step2 + ' ' + status
+            step3 = xml_send(utm_server)
+        response = ' '.join([utm_server, step1, step2, step3])
     else:
         response = 'Попробуйте короткое DNS имя, например vl44-srv03'
     bot.send_message(chat_id=update.message.chat_id, text=response)
 
 
 start_command_handler = CommandHandler('start', startCommand)
+status_command_handler = CommandHandler('status', statusCommand)
 text_message_handler = MessageHandler(Filters.text, textMessage)
 
 dispatcher.add_handler(start_command_handler)
 dispatcher.add_handler(text_message_handler)
+dispatcher.add_handler(status_command_handler)
 
 updater.start_polling(clean=True)
 
