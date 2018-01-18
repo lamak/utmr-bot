@@ -78,6 +78,11 @@ def startCommand(bot, update):
                      text='Введите сервер с утм для проверки')
 
 
+def helpCommand(bot, update):
+    bot.send_message(chat_id=update.message.chat_id,
+                     text='Бот проверяет состояние УТМ. Для быстрой проверки команда /status. Для полной выборочной проверки отправьте имя сервера в сообщении, например vl44-srv03')
+
+
 def statusCommand(bot, update):
     raw_data = []
     for server in settings.utm:
@@ -85,6 +90,7 @@ def statusCommand(bot, update):
     results = '\n'.join([i for i in raw_data])
     bot.send_message(chat_id=update.message.chat_id,
                      text=results)
+
 
 
 def textMessage(bot, update):
@@ -104,11 +110,13 @@ def textMessage(bot, update):
 
 start_command_handler = CommandHandler('start', startCommand)
 status_command_handler = CommandHandler('status', statusCommand)
+help_command_handler = CommandHandler('help', helpCommand)
 text_message_handler = MessageHandler(Filters.text, textMessage)
 
 dispatcher.add_handler(start_command_handler)
 dispatcher.add_handler(text_message_handler)
 dispatcher.add_handler(status_command_handler)
+dispatcher.add_handler(help_command_handler)
 
 updater.start_polling(clean=True)
 
