@@ -1,5 +1,6 @@
 import re
 import os
+# import io
 import logging
 import xml.etree.ElementTree as ET
 import requests
@@ -79,8 +80,19 @@ def startCommand(bot, update):
 
 
 def helpCommand(bot, update):
+    help_text = ''
+    with open('help.txt', 'r', encoding='utf-8') as file:
+        help_text = file.read()
     bot.send_message(chat_id=update.message.chat_id,
-                     text='Бот проверяет состояние УТМ. Для быстрой проверки команда /status. Для полной выборочной проверки отправьте имя сервера в сообщении, например vl44-srv03')
+                     text=help_text, parse_mode='Markdown')
+
+
+def faqCommand(bot, update):
+    faq_text = ''
+    with open('faq.txt', 'r', encoding='utf-8') as file:
+        faq_text = file.read()
+    bot.send_message(chat_id=update.message.chat_id,
+                     text=faq_text, parse_mode='Markdown')
 
 
 def statusCommand(bot, update):
@@ -90,7 +102,6 @@ def statusCommand(bot, update):
     results = '\n'.join([i for i in raw_data])
     bot.send_message(chat_id=update.message.chat_id,
                      text=results)
-
 
 
 def textMessage(bot, update):
@@ -111,12 +122,14 @@ def textMessage(bot, update):
 start_command_handler = CommandHandler('start', startCommand)
 status_command_handler = CommandHandler('status', statusCommand)
 help_command_handler = CommandHandler('help', helpCommand)
+faq_command_handler = CommandHandler('faq', faqCommand)
 text_message_handler = MessageHandler(Filters.text, textMessage)
 
 dispatcher.add_handler(start_command_handler)
 dispatcher.add_handler(text_message_handler)
 dispatcher.add_handler(status_command_handler)
 dispatcher.add_handler(help_command_handler)
+dispatcher.add_handler(faq_command_handler)
 
 updater.start_polling(clean=True)
 
