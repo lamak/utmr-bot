@@ -11,7 +11,6 @@ logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(leve
 updater = Updater(token=config.telegram_token, request_kwargs=config.proxy)
 dispatcher = updater.dispatcher
 xml_query = 'query.xml'
-xml_wb = 'wb.xml'
 
 
 def get_domain_name(hostname: str) -> str:
@@ -127,10 +126,10 @@ def faqCommand(bot, update):
 def statusCommand(bot, update):
     with open("utms") as f:
         data = f.read().splitlines()
-    raw_data = []
+    results = []
     for server in data:
-        raw_data.append(get_quick_diagnosis(server))
-    results = '\n'.join(raw_data)
+        results.append(get_quick_diagnosis(server))
+    results = '\n'.join(results)
     bot.send_message(chat_id=update.message.chat_id, text=results)
 
 
@@ -148,6 +147,67 @@ def textMessage(bot, update):
     else:
         response = 'Попробуйте короткое DNS имя, например vl44-srv03'
     bot.send_message(chat_id=update.message.chat_id, text=response)
+
+
+class Utm:
+    """ УТМ сервер """
+
+    def __init__(self, hostname: str):
+        self.hostname: str = hostname
+
+
+class Result:
+    """ Результаты опроса УТМ
+    С главной страницы получаем:
+    * Состояние УТМ и лицензии
+    * Сроки ключей ГОСТ, PKI
+    * Состояние чеков
+    * Организация из сертификата ГОСТ
+
+    Фиксируются все ошибки при парсинге
+    """
+
+    def __init__(self, utm: Utm):
+        self.utm: Utm = utm  # fsrar, server, title
+        self.legal: str = ''
+        self.gost: str = ''
+        self.pki: str = ''
+        self.cheques: str = ''
+        self.status: bool = False
+        self.licence: bool = False
+        self.error: list = []
+        self.fsrar: str = ''
+        self.host: str = ''
+        self.url: str = ''
+        self.title: str = ''
+        self.filter: bool = False
+
+
+def get_docs_count(utm: str):
+    """ Подсчет входящих, исходящих документов для диагностики связи УТМ"""
+
+    docs_in, docs_out, error = '', '', ''
+    url_utm = get_utm_url(utm)
+    url_in = url_utm + '/opt/out/waybill_v3'
+    url_out = url_utm + '/opt/in'
+    html_element = 'url'
+
+    def count_html_elements(url: str, elem: str) -> int:
+        return len(ET.fromstring(requests.get(url, timeout=2).text).findall(elem))
+
+    try:
+        docs_in = count_html_elements(url_in, html_element)
+        docs_out = count_html_elements(url_out, html_element)
+
+    except (requests.ConnectionError, requests.ReadTimeout):
+        if os.system('ping %s -n 2 > NUL' % (utm,)):
+            error = 'Связи нет'
+        else:
+            error = 'Связь есть, УТМ недоступен'
+    except ET.ParseError:
+        error = 'Проблема с УТМ, проверьте Рутокен'
+
+    return docs_in, docs_out, error
 
 
 start_command_handler = CommandHandler('start', startCommand)
