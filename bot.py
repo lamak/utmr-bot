@@ -64,11 +64,20 @@ class Result:
         self.error: list = []
 
 
-def get_docs_count(utm: str):
+errors = {
+    'INCORRECT_DOMAIN_NAME': 'Попробуйте короткое DNS имя, например vl44-srv03',
+    'PARSE_ERROR': 'Не найдены элементы на странице',
+    'CANT_SAVE_XML': 'Не удалось сформировать XML',
+    'ONLINE_NA': 'В сети, УТМ недоступен',
+    'OFFLINE': 'Не в сети',
+}
+
+
+def get_docs_count(utm: Utm):
     """ Подсчет входящих, исходящих документов для диагностики связи УТМ"""
 
     docs_in, docs_out, error = '', '', ''
-    url_utm = get_utm_url(utm)
+    url_utm = utm.get_utm_url()
     url_in = url_utm + '/opt/out/waybill_v3'
     url_out = url_utm + '/opt/in'
     html_element = 'url'
@@ -81,12 +90,10 @@ def get_docs_count(utm: str):
         docs_out = count_html_elements(url_out, html_element)
 
     except (requests.ConnectionError, requests.ReadTimeout):
-        if os.system('ping %s -n 2 > NUL' % (utm,)):
-            error = 'Связи нет'
-        else:
-            error = 'Связь есть, УТМ недоступен'
+        error = check_utm_availability(utm.get_domain_name())
+
     except ET.ParseError:
-        error = 'Проблема с УТМ, проверьте Рутокен'
+        error = errors.get('PARSE_ERROR')
 
     return docs_in, docs_out, error
 
@@ -122,11 +129,9 @@ def ping(host: str) -> bool:
     return not os.system(f'ping {host} {param["c"]} 2 > {param["n"]}')
 
 
-def check_utm_availability(utm: Utm):
-    if ping(utm.get_domain_name()):
-        return 'В сети, УТМ недоступен'
-    else:
-        return 'Не в сети'
+def check_utm_availability(host: str):
+    """ Проверка не доступен УТМ или хост"""
+    return errors.get('ONLINE_NA') if ping(host) else errors.get('OFFLINE')
 
 
 def get_quick_check(utm: Utm) -> Result:
@@ -138,7 +143,7 @@ def get_quick_check(utm: Utm) -> Result:
         result.fsrar = ET.fromstring(res.text).find('CN').text
 
     except (requests.ConnectionError, requests.ReadTimeout):
-        result.error.append(check_utm_availability(utm))
+        result.error.append(check_utm_availability(utm.get_domain_name()))
 
     return result
 
@@ -151,21 +156,21 @@ def make_query_clients_xml(fsrar: str):
         root[0][0].text, root[1][0][0][0][1].text = fsrar, fsrar
         tree.write(config.queryclients_xml)
     except:
-        err = 'Не удалось сформировать XML'
+        err = errors.get('CANT_SAVE_XML')
     return err
 
 
-def send_query_clients_xml(utm: str):
+def send_query_clients_xml(utm: Utm):
     err = None
 
     try:
         files = {'xml_file': (config.queryclients_xml, open(config.queryclients_xml, 'rb'), 'application/xml')}
-        r = requests.post(get_query_clients_url(utm), files=files)
+        r = requests.post(utm.get_query_clients_url(), files=files)
         if ET.fromstring(r.text).find('sign') is None:
             err = ET.fromstring(r.text).find('error').text
 
     except requests.ConnectionError:
-        err = 'УТМ недоступен'
+        err = check_utm_availability(utm.get_domain_name())
 
     return err
 
@@ -174,18 +179,25 @@ def startCommand(bot, update):
     bot.send_message(chat_id=update.message.chat_id, text='Введите сервер с УТМ для проверки')
 
 
+def get_servers(filename):
+    with open(filename) as f:
+        data = f.read().splitlines()
+        return [Utm(server) for server in data]
+
+
 def filterCommand(bot, update):
-    with open("utms") as f:
-        utms = f.read().splitlines()
-    raw_data = []
+    utms = get_servers(config.utmlist)
+    results = []
     for utm in utms:
         try:
-            result = requests.get(get_reset_filter_url(utm), timeout=3).text
-        except requests.exceptions.ReadTimeout:
-            result = 'ConnectionError'
-        raw_data.append(utm + " " + result)
-    results = '\n'.join([i for i in raw_data])
-    bot.send_message(chat_id=update.message.chat_id, text=results)
+            result = requests.get(utm.get_reset_filter_url(), timeout=3).text
+
+        except (requests.ConnectionError, requests.ReadTimeout):
+            result = check_utm_availability(utm.get_domain_name())
+
+        results.append(f'{utm.hostname} {result}')
+
+    bot.send_message(chat_id=update.message.chat_id, text='\n'.join(results))
 
 
 def helpCommand(bot, update):
@@ -197,10 +209,8 @@ def faqCommand(bot, update):
 
 
 def statusCommand(bot, update):
-    with open(config.utmlist) as f:
-        data = f.read().splitlines()
-
-    results = [get_quick_check(Utm(server)) for server in data]
+    utms = get_servers(config.utmlist)
+    results = [get_quick_check(utm) for utm in utms]
     plaint_res = [f'{res.host} {"[" + res.fsrar + " OK" if not res.error else " ".join(res.error)}' for res in results]
 
     bot.send_message(chat_id=update.message.chat_id, text='\n'.join(plaint_res))
@@ -214,12 +224,12 @@ def textMessage(bot, update):
         result = get_quick_check(Utm(utm_server))
         if not result.error:
             result.error.append(make_query_clients_xml(result.fsrar))
-            result.error.append(send_query_clients_xml(result.host))
+            result.error.append(send_query_clients_xml(result.utm))
         result.error = [e for e in result.error if e]
         response = f'{result.host} {"[" + result.fsrar + "] OK" if not result.error else " ".join(result.error)}'
 
     else:
-        response = 'Попробуйте короткое DNS имя, например vl44-srv03'
+        response = errors.get('INCORRECT_DOMAIN_NAME')
     bot.send_message(chat_id=update.message.chat_id, text=response)
 
 
