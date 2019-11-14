@@ -12,6 +12,7 @@ import config
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
 updater = Updater(token=config.telegram_token, request_kwargs=config.proxy)
+pattern = re.compile(config.host_name_pattern)
 dispatcher = updater.dispatcher
 
 errors = {
@@ -180,7 +181,15 @@ def start_command(bot, update):
 
 
 def filter_command(bot, update):
-    utms = get_servers(config.utmlist)
+    """ Обновление настроек и фильтров на всех УТМ
+    После команды можно указать список УТМ хостов через пробел
+    Если не указаны хосты, то выполняется на всех УТМ по списку
+    """
+    args = update.message.text.split()
+    args.pop(0)
+
+    utms = get_servers(config.utmlist) if not args else [Utm(arg) for arg in args if pattern.match(arg)]
+
     results = []
     for utm in utms:
         try:
@@ -189,10 +198,10 @@ def filter_command(bot, update):
         except (requests.ConnectionError, requests.ReadTimeout):
             result = check_utm_availability(utm.get_domain_name())
 
-        results.append(f'{utm.hostname} {result}')
+        results.append(f'{utm.hostname} {result.strip()}')
     results = add_backticks_to_list(results)
 
-    bot.send_message(chat_id=update.message.chat_id, text=split_in_lines(results))
+    bot.send_message(chat_id=update.message.chat_id, text=split_in_lines(results), parse_mode='Markdown')
 
 
 def help_command(bot, update):
@@ -206,7 +215,8 @@ def faq_command(bot, update):
 def status_command(bot, update):
     utms = get_servers(config.utmlist)
     results = [get_quick_check(utm) for utm in utms]
-    text_res = [f'{res.host.ljust(11)} {"[" + res.fsrar + "] OK" if not res.error else " ".join(res.error)}' for res in results]
+    text_res = [f'{res.host.ljust(11)} {"[" + res.fsrar + "] OK" if not res.error else " ".join(res.error)}' for res in
+                results]
     text_res = add_backticks_to_list(text_res)
 
     bot.send_message(chat_id=update.message.chat_id, text=split_in_lines(text_res), parse_mode='Markdown')
@@ -215,14 +225,13 @@ def status_command(bot, update):
 def text_message(bot, update):
     """ Диагностика УТМ по указаноому hostname"""
     utm_server = update.message.text
-    pattern = re.compile(config.host_name_pattern)
     if pattern.match(utm_server):
-        result = get_quick_check(Utm(utm_server))
-        if not result.error:
-            result.error.append(make_query_clients_xml(result.fsrar))
-            result.error.append(send_query_clients_xml(result.utm))
-        result.error = [e for e in result.error if e]
-        response = f'{result.host.ljust(11)} {"[" + result.fsrar + "] OK" if not result.error else " ".join(result.error)}'
+        res = get_quick_check(Utm(utm_server))
+        if not res.error:
+            res.error.append(make_query_clients_xml(res.fsrar))
+            res.error.append(send_query_clients_xml(res.utm))
+        res.error = [e for e in res.error if e]
+        response = f'{res.host.ljust(11)} {"[" + res.fsrar + "] OK" if not res.error else " ".join(res.error)}'
 
     else:
         response = errors.get('INCORRECT_DOMAIN_NAME')
