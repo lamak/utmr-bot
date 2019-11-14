@@ -175,7 +175,7 @@ def send_query_clients_xml(utm: Utm):
     return err
 
 
-def startCommand(bot, update):
+def start_command(bot, update):
     bot.send_message(chat_id=update.message.chat_id, text='Введите сервер с УТМ для проверки')
 
 
@@ -185,7 +185,7 @@ def get_servers(filename):
         return [Utm(server) for server in data]
 
 
-def filterCommand(bot, update):
+def filter_command(bot, update):
     utms = get_servers(config.utmlist)
     results = []
     for utm in utms:
@@ -200,15 +200,15 @@ def filterCommand(bot, update):
     bot.send_message(chat_id=update.message.chat_id, text='\n'.join(results))
 
 
-def helpCommand(bot, update):
+def help_command(bot, update):
     bot.send_message(chat_id=update.message.chat_id, text=get_md_text('help.md'), parse_mode='Markdown')
 
 
-def faqCommand(bot, update):
+def faq_command(bot, update):
     bot.send_message(chat_id=update.message.chat_id, text=get_md_text('faq.md'), parse_mode='Markdown')
 
 
-def statusCommand(bot, update):
+def status_command(bot, update):
     utms = get_servers(config.utmlist)
     results = [get_quick_check(utm) for utm in utms]
     plaint_res = [f'{res.host} {"[" + res.fsrar + " OK" if not res.error else " ".join(res.error)}' for res in results]
@@ -216,7 +216,7 @@ def statusCommand(bot, update):
     bot.send_message(chat_id=update.message.chat_id, text='\n'.join(plaint_res))
 
 
-def textMessage(bot, update):
+def text_message(bot, update):
     """ Диагностика УТМ по указаноому hostname"""
     utm_server = update.message.text
     pattern = re.compile(config.host_name_pattern)
@@ -233,12 +233,12 @@ def textMessage(bot, update):
     bot.send_message(chat_id=update.message.chat_id, text=response)
 
 
-start_command_handler = CommandHandler('start', startCommand)
-status_command_handler = CommandHandler('status', statusCommand)
-help_command_handler = CommandHandler('help', helpCommand)
-faq_command_handler = CommandHandler('faq', faqCommand)
-text_message_handler = MessageHandler(Filters.text, textMessage)
-filter_command_handler = CommandHandler('filter', filterCommand)
+faq_command_handler = CommandHandler('faq', faq_command)
+help_command_handler = CommandHandler('help', help_command)
+start_command_handler = CommandHandler('start', start_command)
+status_command_handler = CommandHandler('status', status_command)
+filter_command_handler = CommandHandler('filter', filter_command)
+text_message_handler = MessageHandler(Filters.text, text_message)
 
 dispatcher.add_handler(start_command_handler)
 dispatcher.add_handler(text_message_handler)
