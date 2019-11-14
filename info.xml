@@ -1,0 +1,11 @@
+<ns0:Documents xmlns:ns0="http://fsrar.ru/WEGAIS/WB_DOC_SINGLE_01" xmlns:ns1="http://fsrar.ru/WEGAIS/InfoVersionTTN" Version="1.0">
+<ns0:Owner>
+<ns0:FSRAR_ID>020000271396</ns0:FSRAR_ID>
+</ns0:Owner>
+<ns0:Document>
+<ns0:InfoVersionTTN>
+<ns1:ClientId>020000271396</ns1:ClientId>
+<ns1:WBTypeUsed>WayBill_v3</ns1:WBTypeUsed>
+</ns0:InfoVersionTTN>
+</ns0:Document>
+</ns0:Documents>
