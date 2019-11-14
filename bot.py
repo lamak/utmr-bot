@@ -14,6 +14,14 @@ logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(leve
 updater = Updater(token=config.telegram_token, request_kwargs=config.proxy)
 dispatcher = updater.dispatcher
 
+errors = {
+    'INCORRECT_DOMAIN_NAME': 'Попробуйте короткое DNS имя, например vl44-srv03',
+    'PARSE_ERROR': 'Не найдены элементы на странице',
+    'CANT_SAVE_XML': 'Не удалось сформировать XML',
+    'ONLINE_NA': 'В сети, УТМ недоступен',
+    'OFFLINE': 'Не в сети',
+}
+
 
 class Utm:
     """ УТМ сервер """
@@ -64,15 +72,6 @@ class Result:
         self.error: list = []
 
 
-errors = {
-    'INCORRECT_DOMAIN_NAME': 'Попробуйте короткое DNS имя, например vl44-srv03',
-    'PARSE_ERROR': 'Не найдены элементы на странице',
-    'CANT_SAVE_XML': 'Не удалось сформировать XML',
-    'ONLINE_NA': 'В сети, УТМ недоступен',
-    'OFFLINE': 'Не в сети',
-}
-
-
 def get_docs_count(utm: Utm):
     """ Подсчет входящих, исходящих документов для диагностики связи УТМ"""
 
@@ -98,27 +97,15 @@ def get_docs_count(utm: Utm):
     return docs_in, docs_out, error
 
 
-def get_domain_name(hostname: str) -> str:
-    return hostname + config.domain
-
-
-def get_utm_url(hostname: str) -> str:
-    return f'http://{get_domain_name(hostname)}:8080'
-
-
-def get_reset_filter_url(hostname: str) -> str:
-    return f'{get_utm_url(hostname)}/xhr/filter/reset'
-
-
-def get_diagnosis_url(hostname: str) -> str:
-    return f'{get_utm_url(hostname)}/diagnosis'
-
-
-def get_query_clients_url(hostname: str) -> str:
-    return f'{get_utm_url(hostname)}/opt/in/QueryClients_v2'
+def get_servers(filename):
+    """ Список УТМ из хостов """
+    with open(filename) as f:
+        data = f.read().splitlines()
+        return [Utm(server) for server in data]
 
 
 def get_md_text(filename: str) -> str:
+    """ Представление файлов для справки """
     with open(filename, 'r', encoding='utf-8') as file:
         return file.read()
 
@@ -179,12 +166,6 @@ def start_command(bot, update):
     bot.send_message(chat_id=update.message.chat_id, text='Введите сервер с УТМ для проверки')
 
 
-def get_servers(filename):
-    with open(filename) as f:
-        data = f.read().splitlines()
-        return [Utm(server) for server in data]
-
-
 def filter_command(bot, update):
     utms = get_servers(config.utmlist)
     results = []
@@ -212,7 +193,6 @@ def status_command(bot, update):
     utms = get_servers(config.utmlist)
     results = [get_quick_check(utm) for utm in utms]
     plaint_res = [f'{res.host} {"[" + res.fsrar + " OK" if not res.error else " ".join(res.error)}' for res in results]
-
     bot.send_message(chat_id=update.message.chat_id, text='\n'.join(plaint_res))
 
 
