@@ -13,7 +13,6 @@ logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(leve
 
 updater = Updater(token=config.telegram_token, request_kwargs=config.proxy)
 dispatcher = updater.dispatcher
-queryclients_xml = 'query.xml'
 
 
 class Utm:
@@ -50,19 +49,19 @@ class Result:
     """
 
     def __init__(self, utm: Utm):
-        self.utm: Utm = utm  # fsrar, server, title
+        self.utm: Utm = utm
+        self.host: str = utm.hostname
+        self.url: str = utm.get_utm_url()
         self.legal: str = ''
         self.gost: str = ''
         self.pki: str = ''
         self.cheques: str = ''
+        self.fsrar: str = ''
+        self.title: str = ''
         self.status: bool = False
         self.licence: bool = False
-        self.error: list = []
-        self.fsrar: str = ''
-        self.host: str = ''
-        self.url: str = ''
-        self.title: str = ''
         self.filter: bool = False
+        self.error: list = []
 
 
 def get_docs_count(utm: str):
@@ -117,67 +116,58 @@ def get_md_text(filename: str) -> str:
         return file.read()
 
 
-# todo: свести следующие 2 метода к одному
-def get_quick_diagnosis(utm: str):
+def ping(host: str) -> bool:
+    # Cross platform ping
+    param = {'c': '-n', 'n': 'NUL'} if platform.system().lower() == 'windows' else {'c': '-c', 'n': 'null'}
+    return not os.system(f'ping {host} {param["c"]} 2 > {param["n"]}')
+
+
+def check_utm_availability(utm: Utm):
+    if ping(utm.get_domain_name()):
+        return 'В сети, УТМ недоступен'
+    else:
+        return 'Не в сети'
+
+
+def get_quick_check(utm: Utm) -> Result:
+    """ Быстрая диагностика УТМ """
+    result: Result = Result(utm)
+
     try:
-        res = requests.get(get_diagnosis_url(utm))
-        cn = ET.fromstring(res.text).find('CN').text
-        result = 'OK [' + cn + '] ' + utm
-    except requests.ConnectionError:
-        result = utm + ' **error**'
-    except requests.ReadTimeout:
-        result = utm + ' **timeout**'
-    except ET.ParseError:
-        result = utm + ' **no token**'
+        res = requests.get(utm.get_diagnosis_url(), timeout=3)
+        result.fsrar = ET.fromstring(res.text).find('CN').text
+
+    except (requests.ConnectionError, requests.ReadTimeout):
+        result.error.append(check_utm_availability(utm))
+
     return result
 
 
-def ping(host: str) -> bool:
-    # Cross platform ping
-    param = '-n' if platform.system().lower() == 'windows' else '-c'
-    return not os.system(f'ping {host} {param} 2 > NUL')
-
-
-def run_full_scan(utm: str):
-    fsrar, error = '', ''
-    try:
-        res = requests.get(get_diagnosis_url(utm))
-        fsrar = ET.fromstring(res.text).find('CN').text
-    except (requests.ConnectionError, requests.ReadTimeout):
-        if ping(utm):
-            error = 'Связи нет'
-        else:
-            error = 'Связь есть, УТМ недоступен'
-    except ET.ParseError:
-        error = 'Проблема с УТМ, проверьте Рутокен'
-    return fsrar, error
-
-
 def make_query_clients_xml(fsrar: str):
-    error = ''
+    err = None
     try:
-        tree = ET.parse(queryclients_xml)
+        tree = ET.parse(config.queryclients_xml)
         root = tree.getroot()
         root[0][0].text, root[1][0][0][0][1].text = fsrar, fsrar
-        tree.write(queryclients_xml)
+        tree.write(config.queryclients_xml)
     except:
-        error = 'Не удалось сформировать XML'
-    return error
+        err = 'Не удалось сформировать XML'
+    return err
 
 
 def send_query_clients_xml(utm: str):
-    status = ''
+    err = None
 
     try:
-        files = {'xml_file': (queryclients_xml, open(queryclients_xml, 'rb'), 'application/xml')}
+        files = {'xml_file': (config.queryclients_xml, open(config.queryclients_xml, 'rb'), 'application/xml')}
         r = requests.post(get_query_clients_url(utm), files=files)
-        if ET.fromstring(r.text).iter('sign'):
-            status = 'OK'
-        for error in ET.fromstring(r.text).iter('error'):
-            status = error.text + ', **проверьте токен**'
-    except:
-        status = '**Не удалось отправить XML**'
-    return status
+        if ET.fromstring(r.text).find('sign') is None:
+            err = ET.fromstring(r.text).find('error').text
+
+    except requests.ConnectionError:
+        err = 'УТМ недоступен'
+
+    return err
 
 
 def startCommand(bot, update):
@@ -190,7 +180,7 @@ def filterCommand(bot, update):
     raw_data = []
     for utm in utms:
         try:
-            result = requests.get(get_reset_filter_url(utm), timeout=5).text
+            result = requests.get(get_reset_filter_url(utm), timeout=3).text
         except requests.exceptions.ReadTimeout:
             result = 'ConnectionError'
         raw_data.append(utm + " " + result)
@@ -207,13 +197,13 @@ def faqCommand(bot, update):
 
 
 def statusCommand(bot, update):
-    with open("utms") as f:
+    with open(config.utmlist) as f:
         data = f.read().splitlines()
-    results = []
-    for server in data:
-        results.append(get_quick_diagnosis(server))
-    results = '\n'.join(results)
-    bot.send_message(chat_id=update.message.chat_id, text=results)
+
+    results = [get_quick_check(Utm(server)) for server in data]
+    plaint_res = [f'{res.host} {"[" + res.fsrar + " OK" if not res.error else " ".join(res.error)}' for res in results]
+
+    bot.send_message(chat_id=update.message.chat_id, text='\n'.join(plaint_res))
 
 
 def textMessage(bot, update):
@@ -221,12 +211,13 @@ def textMessage(bot, update):
     utm_server = update.message.text
     pattern = re.compile(config.host_name_pattern)
     if pattern.match(utm_server):
-        fsrarid, step1, step2, step3 = '', '', '', ''
-        fsrarid, step1 = run_full_scan(utm_server)
-        if fsrarid:
-            step2 = make_query_clients_xml(fsrarid)
-            step3 = send_query_clients_xml(utm_server)
-        response = ' '.join([utm_server, fsrarid, step1, step2, step3])
+        result = get_quick_check(Utm(utm_server))
+        if not result.error:
+            result.error.append(make_query_clients_xml(result.fsrar))
+            result.error.append(send_query_clients_xml(result.host))
+        result.error = [e for e in result.error if e]
+        response = f'{result.host} {"[" + result.fsrar + "] OK" if not result.error else " ".join(result.error)}'
+
     else:
         response = 'Попробуйте короткое DNS имя, например vl44-srv03'
     bot.send_message(chat_id=update.message.chat_id, text=response)
