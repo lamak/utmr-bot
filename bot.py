@@ -14,32 +14,53 @@ xml_query = 'query.xml'
 xml_wb = 'wb.xml'
 
 
-def fast_get(server_name: str):
-    server_domain_name = server_name + config.domain
-    url = 'http://{0}:8080/diagnosis'.format(server_domain_name)
-    # url_version = 'http://{0}:8080/info/version'.format(server_domain_name)
+def get_domain_name(hostname: str) -> str:
+    return hostname + config.domain
+
+
+def get_utm_url(hostname: str) -> str:
+    return f'http://{get_domain_name(hostname)}:8080'
+
+
+def get_reset_filter_url(hostname: str) -> str:
+    return f'{get_utm_url(hostname)}/xhr/filter/reset'
+
+
+def get_diagnosis_url(hostname: str) -> str:
+    return f'{get_utm_url(hostname)}/diagnosis'
+
+
+def get_query_clients_url(hostname: str) -> str:
+    return f'{get_utm_url(hostname)}/opt/in/QueryClients_v2'
+
+
+def get_md_text(filename: str) -> str:
+    with open(filename, 'r', encoding='utf-8') as file:
+        return file.read()
+
+
+# todo: свести следующие 2 метода к одному
+def get_quick_diagnosis(utm: str):
     try:
-        # version = requests.get(url_version, timeout=2).text
-        cn = ET.fromstring(requests.get(url).text).find('CN').text
-        fsrar = 'OK [' + cn + '] ' + server_name
+        res = requests.get(get_diagnosis_url(utm))
+        cn = ET.fromstring(res.text).find('CN').text
+        fsrar = 'OK [' + cn + '] ' + utm
     except requests.ConnectionError:
-        fsrar = server_name + ' **error**'
+        fsrar = utm + ' **error**'
     except requests.ReadTimeout:
-        fsrar = server_name + ' **timeout**'
+        fsrar = utm + ' **timeout**'
     except ET.ParseError:
-        fsrar = server_name + ' **no token**'
+        fsrar = utm + ' **no token**'
     return fsrar
 
 
-def fsrar_get(server_name: str):
+def get_fsrar_id(utm: str):
     fsrar, error = '', ''
-    server_domain_name = server_name + config.domain
-    url = 'http://{0}:8080/diagnosis'.format(server_domain_name)
     try:
-        fsrar = ET.fromstring(requests.get(url).text).find('CN').text
+        res = requests.get(get_diagnosis_url(utm))
+        fsrar = ET.fromstring(res.text).find('CN').text
     except (requests.ConnectionError, requests.ReadTimeout):
-        # if os.system('ping %s -c 2 > NUL' % (server_domain_name,)):
-        if os.system('ping %s -n 2 > NUL' % (server_name,)):
+        if os.system('ping %s -n 2 > NUL' % (utm,)):
             error = 'Связи нет'
         else:
             error = 'Связь есть, УТМ недоступен'
@@ -48,7 +69,7 @@ def fsrar_get(server_name: str):
     return fsrar, error
 
 
-def xml_make(fsrar: str):
+def make_query_clients_xml(fsrar: str):
     error = ''
     if fsrar:
         try:
@@ -61,14 +82,13 @@ def xml_make(fsrar: str):
     return error
 
 
-def xml_send(server_name: str):
+def send_query_clients_xml(utm: str):
     status = ''
-    server_domain_name = server_name + config.domain
-    url = 'http://{0}:8080/opt/in/QueryClients_v2'.format(server_domain_name)
+
     try:
         files = {'xml_file': (xml_query, open(
             xml_query, 'rb'), 'application/xml')}
-        r = requests.post(url, files=files)
+        r = requests.post(get_query_clients_url(utm), files=files)
         if ET.fromstring(r.text).iter('sign'):
             status = 'OK'
         for error in ET.fromstring(r.text).iter('error'):
@@ -78,43 +98,30 @@ def xml_send(server_name: str):
     return status
 
 
+def startCommand(bot, update):
+    bot.send_message(chat_id=update.message.chat_id, text='Введите сервер с УТМ для проверки')
+
+
 def filterCommand(bot, update):
     with open("utms") as f:
-        data = f.read().splitlines()
+        utms = f.read().splitlines()
     raw_data = []
-    for server in data:
-        status, error = '', ''
-        server_domain_name = server + config.domain
-        url = 'http://{0}:8080/xhr/filter/reset'.format(server_domain_name)
+    for utm in utms:
         try:
-            result = requests.get(url, timeout=20).text
+            result = requests.get(get_reset_filter_url(utm), timeout=5).text
         except requests.exceptions.ReadTimeout:
             result = 'ConnectionError'
-        raw_data.append(server + " " + result)
+        raw_data.append(utm + " " + result)
     results = '\n'.join([i for i in raw_data])
-    bot.send_message(chat_id=update.message.chat_id,
-                     text=results)
-
-
-def startCommand(bot, update):
-    bot.send_message(chat_id=update.message.chat_id,
-                     text='Введите сервер с утм для проверки')
+    bot.send_message(chat_id=update.message.chat_id, text=results)
 
 
 def helpCommand(bot, update):
-    help_text = ''
-    with open('help.md', 'r', encoding='utf-8') as file:
-        help_text = file.read()
-    bot.send_message(chat_id=update.message.chat_id,
-                     text=help_text, parse_mode='Markdown')
+    bot.send_message(chat_id=update.message.chat_id, text=get_md_text('help.md'), parse_mode='Markdown')
 
 
 def faqCommand(bot, update):
-    faq_text = ''
-    with open('faq.md', 'r', encoding='utf-8') as file:
-        faq_text = file.read()
-    bot.send_message(chat_id=update.message.chat_id,
-                     text=faq_text, parse_mode='Markdown')
+    bot.send_message(chat_id=update.message.chat_id, text=get_md_text('faq.md'), parse_mode='Markdown')
 
 
 def statusCommand(bot, update):
@@ -122,21 +129,21 @@ def statusCommand(bot, update):
         data = f.read().splitlines()
     raw_data = []
     for server in data:
-        raw_data.append(fast_get(server))
+        raw_data.append(get_quick_diagnosis(server))
     results = '\n'.join(raw_data)
-    bot.send_message(chat_id=update.message.chat_id,
-                     text=results)
+    bot.send_message(chat_id=update.message.chat_id, text=results)
 
 
 def textMessage(bot, update):
+    """ Диагностика УТМ по указаноому hostname"""
     utm_server = update.message.text
     pattern = re.compile(config.host_name_pattern)
     if pattern.match(utm_server):
         fsrarid, step1, step2, step3 = '', '', '', ''
-        fsrarid, step1 = fsrar_get(utm_server)
+        fsrarid, step1 = get_fsrar_id(utm_server)
         if fsrarid:
-            step2 = xml_make(fsrarid)
-            step3 = xml_send(utm_server)
+            step2 = make_query_clients_xml(fsrarid)
+            step3 = send_query_clients_xml(utm_server)
         response = ' '.join([utm_server, fsrarid, step1, step2, step3])
     else:
         response = 'Попробуйте короткое DNS имя, например vl44-srv03'
