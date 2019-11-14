@@ -121,6 +121,19 @@ def check_utm_availability(host: str):
     return errors.get('ONLINE_NA') if ping(host) else errors.get('OFFLINE')
 
 
+def add_backticks_to_list(results: list) -> list:
+    """ Обрамление в код для моноширных списков """
+    backticks = '```'
+    results.insert(0, backticks)
+    results.insert(len(results), backticks)
+    return results
+
+
+def split_in_lines(results: list) -> str:
+    """ Построчный вывод списков """
+    return '\n'.join(results)
+
+
 def get_quick_check(utm: Utm) -> Result:
     """ Быстрая диагностика УТМ """
     result: Result = Result(utm)
@@ -177,8 +190,9 @@ def filter_command(bot, update):
             result = check_utm_availability(utm.get_domain_name())
 
         results.append(f'{utm.hostname} {result}')
+    results = add_backticks_to_list(results)
 
-    bot.send_message(chat_id=update.message.chat_id, text='\n'.join(results))
+    bot.send_message(chat_id=update.message.chat_id, text=split_in_lines(results))
 
 
 def help_command(bot, update):
@@ -192,8 +206,10 @@ def faq_command(bot, update):
 def status_command(bot, update):
     utms = get_servers(config.utmlist)
     results = [get_quick_check(utm) for utm in utms]
-    plaint_res = [f'{res.host} {"[" + res.fsrar + " OK" if not res.error else " ".join(res.error)}' for res in results]
-    bot.send_message(chat_id=update.message.chat_id, text='\n'.join(plaint_res))
+    text_res = [f'{res.host.ljust(11)} {"[" + res.fsrar + "] OK" if not res.error else " ".join(res.error)}' for res in results]
+    text_res = add_backticks_to_list(text_res)
+
+    bot.send_message(chat_id=update.message.chat_id, text=split_in_lines(text_res), parse_mode='Markdown')
 
 
 def text_message(bot, update):
@@ -206,7 +222,7 @@ def text_message(bot, update):
             result.error.append(make_query_clients_xml(result.fsrar))
             result.error.append(send_query_clients_xml(result.utm))
         result.error = [e for e in result.error if e]
-        response = f'{result.host} {"[" + result.fsrar + "] OK" if not result.error else " ".join(result.error)}'
+        response = f'{result.host.ljust(11)} {"[" + result.fsrar + "] OK" if not result.error else " ".join(result.error)}'
 
     else:
         response = errors.get('INCORRECT_DOMAIN_NAME')
