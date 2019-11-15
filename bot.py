@@ -74,6 +74,8 @@ class Result:
         self.licence: bool = False
         self.filter: bool = False
         self.error: list = []
+        self.docs_in: int
+        self.docs_out: int
 
 
 def get_docs_count(utm: Utm):
@@ -157,7 +159,21 @@ def get_quick_check(utm: Utm) -> Result:
     return result
 
 
+def get_sign_check(res: Result):
+    """ Создание и попытка отправки XML для подтверждения работы механизма подписи"""
+    create_result, filename = make_query_clients_xml(res.fsrar)
+    if create_result:
+        res.error.append(create_result)
+
+    send_result = send_query_clients_xml(res.utm, filename)
+    if send_result:
+        res.error.append(send_result)
+
+    return res
+
+
 def make_query_clients_xml(fsrar: str):
+    """ Создание XML """
     err = None
     filename = None
 
@@ -173,6 +189,7 @@ def make_query_clients_xml(fsrar: str):
 
 
 def send_query_clients_xml(utm: Utm, filename: str):
+    """ Отправка XML """
     err = None
 
     try:
@@ -251,11 +268,10 @@ def text_message(bot, update):
     utm_server = update.message.text
     if pattern.match(utm_server):
         res = get_quick_check(Utm(utm_server))
+
         if not res.error:
-            xml_res, filename = make_query_clients_xml(res.fsrar)
-            res.error.append(xml_res)
-            print(filename)
-            res.error.append(send_query_clients_xml(res.utm, filename))
+            res = get_sign_check(res)
+
         res.error = [e for e in res.error if e]
         response = f'{res.host.ljust(11)} {"[" + res.fsrar + "] OK" if not res.error else " ".join(res.error)}'
 
