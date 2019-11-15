@@ -1,7 +1,6 @@
 import logging
-import os
-import platform
 import re
+import socket
 import xml.etree.ElementTree as ET
 
 import requests
@@ -111,15 +110,20 @@ def get_md_text(filename: str) -> str:
         return file.read()
 
 
-def ping(host: str) -> bool:
-    # Cross platform ping
-    param = {'c': '-n', 'n': 'NUL'} if platform.system().lower() == 'windows' else {'c': '-c', 'n': 'null'}
-    return not os.system(f'ping {host} {param["c"]} 2 > {param["n"]}')
+def check_rdp(host: str) -> bool:
+    """ Проверка доступности сервера по RDP"""
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        s.connect((host, 3389))
+        s.shutdown(2)
+        return True
+    except (ConnectionRefusedError, socket.gaierror):
+        return False
 
 
 def check_utm_availability(host: str):
     """ Проверка не доступен УТМ или хост"""
-    return errors.get('ONLINE_NA') if ping(host) else errors.get('OFFLINE')
+    return errors.get('ONLINE_NA') if check_rdp(host) else errors.get('OFFLINE')
 
 
 def add_backticks_to_list(results: list) -> list:
