@@ -7,6 +7,7 @@ import xml.etree.ElementTree as ET
 from collections import Counter
 
 import requests
+from requests_html import HTMLSession
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
 
 import config
@@ -74,33 +75,37 @@ class Result:
         self.licence: bool = False
         self.filter: bool = False
         self.error: list = []
-        self.docs_in: int
-        self.docs_out: int
+        self.docs_in: int = 0
+        self.docs_out: int = 0
 
 
-def get_docs_count(utm: Utm):
+def check_docs_count(res: Result):
     """ Подсчет входящих, исходящих документов для диагностики связи УТМ"""
 
+    def count_html_elements(url: str, elem: str) -> int:
+        page = requests.get(url, timeout=2).text
+        counter = len(ET.fromstring(page).findall(elem))
+        return counter
+
     docs_in, docs_out, error = '', '', ''
-    url_utm = utm.get_utm_url()
+    url_utm = res.utm.get_utm_url()
     url_in = url_utm + '/opt/out/waybill_v3'
     url_out = url_utm + '/opt/in'
     html_element = 'url'
-
-    def count_html_elements(url: str, elem: str) -> int:
-        return len(ET.fromstring(requests.get(url, timeout=2).text).findall(elem))
+    print(url_in, url_out)
 
     try:
-        docs_in = count_html_elements(url_in, html_element)
-        docs_out = count_html_elements(url_out, html_element)
+        res.docs_in = count_html_elements(url_in, html_element)
+        res.docs_out = count_html_elements(url_out, html_element)
 
     except (requests.ConnectionError, requests.ReadTimeout):
-        error = check_utm_availability(utm.get_domain_name())
+        error = check_utm_availability(res.utm.get_domain_name())
 
     except ET.ParseError:
         error = errors.get('PARSE_ERROR')
 
-    return docs_in, docs_out, error
+    res.error.append(error)
+    return res
 
 
 def get_servers(filename):
@@ -159,7 +164,7 @@ def get_quick_check(utm: Utm) -> Result:
     return result
 
 
-def get_sign_check(res: Result):
+def check_sign(res: Result):
     """ Создание и попытка отправки XML для подтверждения работы механизма подписи"""
     create_result, filename = make_query_clients_xml(res.fsrar)
     if create_result:
@@ -194,7 +199,8 @@ def send_query_clients_xml(utm: Utm, filename: str):
 
     try:
         files = {'xml_file': (filename, open(filename, 'rb'), 'application/xml')}
-        r = requests.post(utm.get_query_clients_url(), files=files)
+        r = requests.post(utm.get_query_clients_url(), timeout=5, files=files)
+        print(r)
         if ET.fromstring(r.text).find('sign') is None:
             err = ET.fromstring(r.text).find('error').text
         os.remove(filename)
@@ -270,14 +276,22 @@ def text_message(bot, update):
         res = get_quick_check(Utm(utm_server))
 
         if not res.error:
-            res = get_sign_check(res)
+            check_sign(res)
+            check_docs_count(res)
 
-        res.error = [e for e in res.error if e]
-        response = f'{res.host.ljust(11)} {"[" + res.fsrar + "] OK" if not res.error else " ".join(res.error)}'
+        response = [f'УТМ: {res.host}']
+        if res.error:
+            response.append(" ".join([e for e in res.error if e]))
+        else:
+            response.append(f'ФСРАР ИД: [{res.fsrar}]')
+            response.append(
+                f'Входящие документы: [{res.docs_in}] {"OK" if res.docs_in <= 5 else "**Возможно, проблема обмена Супермаг**"}')
+            response.append(
+                f'Исходящие документы: [{res.docs_out}] {"OK" if res.docs_out <= 5 else "**Возможно, нет связи с ФСРАР**"}')
 
     else:
         response = errors.get('INCORRECT_DOMAIN_NAME')
-    bot.send_message(chat_id=update.message.chat_id, text=response)
+    bot.send_message(chat_id=update.message.chat_id, text=split_in_lines(response), parse_mode='Markdown')
 
 
 faq_command_handler = CommandHandler('faq', faq_command)
