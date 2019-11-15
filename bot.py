@@ -1,6 +1,8 @@
 import logging
+import os
 import re
 import socket
+import uuid
 import xml.etree.ElementTree as ET
 from collections import Counter
 
@@ -157,25 +159,28 @@ def get_quick_check(utm: Utm) -> Result:
 
 def make_query_clients_xml(fsrar: str):
     err = None
+    filename = None
+
     try:
         tree = ET.parse(config.queryclients_xml)
         root = tree.getroot()
         root[0][0].text, root[1][0][0][0][1].text = fsrar, fsrar
-        tree.write(config.queryclients_xml)
+        filename = uuid.uuid4().__str__() + '.xml'
+        tree.write(filename)
     except:
         err = errors.get('CANT_SAVE_XML')
-    return err
+    return err, filename
 
 
-def send_query_clients_xml(utm: Utm):
+def send_query_clients_xml(utm: Utm, filename: str):
     err = None
 
     try:
-        files = {'xml_file': (config.queryclients_xml, open(config.queryclients_xml, 'rb'), 'application/xml')}
+        files = {'xml_file': (filename, open(filename, 'rb'), 'application/xml')}
         r = requests.post(utm.get_query_clients_url(), files=files)
         if ET.fromstring(r.text).find('sign') is None:
             err = ET.fromstring(r.text).find('error').text
-
+        os.remove(filename)
     except requests.ConnectionError:
         err = check_utm_availability(utm.get_domain_name())
 
@@ -247,8 +252,10 @@ def text_message(bot, update):
     if pattern.match(utm_server):
         res = get_quick_check(Utm(utm_server))
         if not res.error:
-            res.error.append(make_query_clients_xml(res.fsrar))
-            res.error.append(send_query_clients_xml(res.utm))
+            xml_res, filename = make_query_clients_xml(res.fsrar)
+            res.error.append(xml_res)
+            print(filename)
+            res.error.append(send_query_clients_xml(res.utm, filename))
         res.error = [e for e in res.error if e]
         response = f'{res.host.ljust(11)} {"[" + res.fsrar + "] OK" if not res.error else " ".join(res.error)}'
 
