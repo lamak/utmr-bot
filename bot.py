@@ -186,6 +186,14 @@ def start_command(bot, update):
     bot.send_message(chat_id=update.message.chat_id, text='Введите сервер с УТМ для проверки')
 
 
+def help_command(bot, update):
+    bot.send_message(chat_id=update.message.chat_id, text=get_md_text('help.md'), parse_mode='Markdown')
+
+
+def faq_command(bot, update):
+    bot.send_message(chat_id=update.message.chat_id, text=get_md_text('faq.md'), parse_mode='Markdown')
+
+
 def filter_command(bot, update):
     """ Обновление настроек и фильтров на всех УТМ
     После команды можно указать список УТМ хостов через пробел
@@ -216,14 +224,6 @@ def filter_command(bot, update):
         res_text = [errors.get('NO_UTMS'), ]
 
     bot.send_message(chat_id=update.message.chat_id, text=split_in_lines(res_text), parse_mode='Markdown')
-
-
-def help_command(bot, update):
-    bot.send_message(chat_id=update.message.chat_id, text=get_md_text('help.md'), parse_mode='Markdown')
-
-
-def faq_command(bot, update):
-    bot.send_message(chat_id=update.message.chat_id, text=get_md_text('faq.md'), parse_mode='Markdown')
 
 
 def status_command(bot, update):
