@@ -215,9 +215,14 @@ def faq_command(bot, update):
 def status_command(bot, update):
     utms = get_servers(config.utmlist)
     results = [get_quick_check(utm) for utm in utms]
+    results.sort(key=lambda utm: utm.error)
+    err_counter = len([utm for utm in results if utm.error != []])
+    res_counter = len(results) - err_counter
+
     text_res = [f'{res.host.ljust(11)} {"[" + res.fsrar + "] OK" if not res.error else " ".join(res.error)}' for res in
                 results]
     text_res = add_backticks_to_list(text_res)
+    text_res.insert(len(text_res), f'`OK: {res_counter} Errors: {err_counter}`')
 
     bot.send_message(chat_id=update.message.chat_id, text=split_in_lines(text_res), parse_mode='Markdown')
 
