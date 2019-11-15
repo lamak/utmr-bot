@@ -210,6 +210,34 @@ def send_query_clients_xml(utm: Utm, filename: str):
     return err
 
 
+def check_utm_indexpage(res: Result):
+    """ Основная диагностика """
+    session = HTMLSession()
+
+    try:
+        index = session.get(res.utm.get_version_url())
+        home_data = index.html.find('#home', first=True)
+        home = home_data.text.split('\n')
+
+        # Проверка статус и лицензии
+        if 'Проблема с RSA' not in home:
+            res.status = True
+
+        if 'Лицензия на вид деятельности действует' in home:
+            res.license = True
+
+        if 'Обновление настроек не требуется' in home:
+            res.filter = True
+
+    except (requests.ConnectionError, requests.ReadTimeout):
+        res.error.append('Не удатся получить страницу УТМ')
+
+    except:
+        res.error.append(errors.get('PARSE_ERROR'))
+
+    return res
+
+
 def start_command(bot, update):
     bot.send_message(chat_id=update.message.chat_id, text='Введите сервер с УТМ для проверки')
 
