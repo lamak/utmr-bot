@@ -40,6 +40,9 @@ class Utm:
     def get_utm_url(self) -> str:
         return f'http://{self.get_domain_name()}:8080'
 
+    def get_version_url(self) -> str:
+        return f'{self.get_utm_url()}/?b'
+
     def get_reset_filter_url(self) -> str:
         return f'{self.get_utm_url()}/xhr/filter/reset'
 
@@ -306,16 +309,19 @@ def text_message(bot, update):
         if not res.error:
             check_sign(res)
             check_docs_count(res)
+            check_utm_indexpage(res)
 
-        response = [f'УТМ: {res.host}']
-        if res.error:
-            response.append(" ".join([e for e in res.error if e]))
-        else:
-            response.append(f'ФСРАР ИД: [{res.fsrar}]')
-            response.append(
-                f'Входящие документы: [{res.docs_in}] {"OK" if res.docs_in <= 5 else "**Возможно, проблема обмена Супермаг**"}')
-            response.append(
-                f'Исходящие документы: [{res.docs_out}] {"OK" if res.docs_out <= 5 else "**Возможно, нет связи с ФСРАР**"}')
+        response = list()
+        response.append(f'УТМ: {res.host}')
+        response.append(f'ФСРАР: {res.fsrar}')
+        response.append(f'Лицензия: {"OK" if res.licence else "**Не действительна**"}')
+        response.append(f'Рутокен: {"OK" if res.status else "**Не найден**"}')
+        response.append(f'Фильтр: {"OK" if res.filter else "**Обновить если возникают ошибки при продаже**"}')
+        response.append(
+            f'Входящие документы: [{res.docs_in}] {"OK" if res.docs_in <= 5 else "**Возможно, проблема обмена Супермаг**"}')
+        response.append(
+            f'Исходящие документы: [{res.docs_out}] {"OK" if res.docs_out <= 5 else "**Возможно, нет связи с ФСРАР**"}')
+        response.append(" ".join([e for e in res.error if e]))
 
     else:
         response = errors.get('INCORRECT_DOMAIN_NAME')
