@@ -2,6 +2,7 @@ import logging
 import re
 import socket
 import xml.etree.ElementTree as ET
+from collections import Counter
 
 import requests
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
@@ -20,6 +21,7 @@ errors = {
     'CANT_SAVE_XML': 'Не удалось сформировать XML',
     'ONLINE_NA': 'В сети, УТМ недоступен',
     'OFFLINE': 'Не в сети',
+    'NO_UTMS': 'Не найдено УТМ',
 }
 
 
@@ -101,7 +103,7 @@ def get_servers(filename):
     """ Список УТМ из хостов """
     with open(filename) as f:
         data = f.read().splitlines()
-        return [Utm(server) for server in data]
+        return [Utm(server) for server in set(data)]
 
 
 def get_md_text(filename: str) -> str:
@@ -192,20 +194,28 @@ def filter_command(bot, update):
     args = update.message.text.split()
     args.pop(0)
 
-    utms = get_servers(config.utmlist) if not args else [Utm(arg) for arg in args if pattern.match(arg)]
+    utms = get_servers(config.utmlist) if args == ['all'] else [Utm(arg) for arg in set(args) if pattern.match(arg)]
+    if utms:
+        results = {}
+        for utm in utms:
+            try:
+                result = requests.get(utm.get_reset_filter_url(), timeout=3).text
 
-    results = []
-    for utm in utms:
-        try:
-            result = requests.get(utm.get_reset_filter_url(), timeout=3).text
+            except (requests.ConnectionError, requests.ReadTimeout):
+                result = check_utm_availability(utm.get_domain_name())
 
-        except (requests.ConnectionError, requests.ReadTimeout):
-            result = check_utm_availability(utm.get_domain_name())
+            results[utm.hostname] = result.strip()
 
-        results.append(f'{utm.hostname} {result.strip()}')
-    results = add_backticks_to_list(results)
+        res_keys = Counter(results.values())
 
-    bot.send_message(chat_id=update.message.chat_id, text=split_in_lines(results), parse_mode='Markdown')
+        res_text = [f'{res[0]} {res[1]}' for res in sorted(results.items(), key=lambda l: l[1])]
+        res_text = add_backticks_to_list(res_text)
+        res_text.extend([f'`{k}: {v}`' for k, v in dict(res_keys).items()])
+
+    else:
+        res_text = [errors.get('NO_UTMS'), ]
+
+    bot.send_message(chat_id=update.message.chat_id, text=split_in_lines(res_text), parse_mode='Markdown')
 
 
 def help_command(bot, update):
