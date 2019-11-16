@@ -325,13 +325,14 @@ def text_message(bot, update):
         response = list()
         response.append(f'УТМ:        {res.host}')
         response.append(f'ФСРАР:      {res.fsrar if res.fsrar else comments.get("fsrar")}')
-        response.append(f'Лицензия:   {"OK" if res.licence else comments.get("licence")}')
         response.append(f'Рутокен:    {"OK" if res.sign else comments.get("sign")}')
+        response.append(f'Лицензия:   {"OK" if res.licence else comments.get("licence")}')
         response.append(f'Фильтр:     {"OK" if res.filter else comments.get("filter")}')
         response.append(f'Входящие:   {res.docs_in} {"OK" if res.docs_in <= 5 else comments.get("docs_in")}')
         response.append(f'Исходящие:  {res.docs_out} {"OK" if res.docs_out <= 5 else comments.get("docs_out")}')
         response.append(f'Ошибки:     {"ОК" if res.error else " ".join([e for e in res.error if e])}')
 
+        add_backticks_to_list(response)
     else:
         response = errors.get('INCORRECT_DOMAIN_NAME')
     bot.send_message(chat_id=update.message.chat_id, text=split_in_lines(response), parse_mode='Markdown')
