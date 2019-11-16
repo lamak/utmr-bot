@@ -74,6 +74,7 @@ class Result:
         self.cheques: str = ''
         self.fsrar: str = ''
         self.title: str = ''
+        self.sign: bool = False
         self.status: bool = False
         self.licence: bool = False
         self.filter: bool = False
@@ -176,6 +177,8 @@ def check_sign(res: Result):
     send_result = send_query_clients_xml(res.utm, filename)
     if send_result:
         res.error.append(send_result)
+    else:
+        res.sign = True
 
     return res
 
@@ -305,23 +308,29 @@ def text_message(bot, update):
     utm_server = update.message.text
     if pattern.match(utm_server):
         res = get_quick_check(Utm(utm_server))
+        comments = {
+            'fsrar': 'УТМ недоступен',
+            'licence': 'Не действительна',
+            'sign': 'Не удалось подписать документ,проверьте Рутокен',
+            'filter': 'Необходимо обновить настройки',
+            'docs_in': 'Возможно, проблема обмена Супермаг',
+            'docs_out': 'Возможно, нет связи с ФСРАР',
+        }
 
-        if not res.error:
+        if res.fsrar:
             check_sign(res)
             check_docs_count(res)
             check_utm_indexpage(res)
 
         response = list()
-        response.append(f'УТМ: {res.host}')
-        response.append(f'ФСРАР: {res.fsrar}')
-        response.append(f'Лицензия: {"OK" if res.licence else "**Не действительна**"}')
-        response.append(f'Рутокен: {"OK" if res.status else "**Не найден**"}')
-        response.append(f'Фильтр: {"OK" if res.filter else "**Обновить если возникают ошибки при продаже**"}')
-        response.append(
-            f'Входящие документы: [{res.docs_in}] {"OK" if res.docs_in <= 5 else "**Возможно, проблема обмена Супермаг**"}')
-        response.append(
-            f'Исходящие документы: [{res.docs_out}] {"OK" if res.docs_out <= 5 else "**Возможно, нет связи с ФСРАР**"}')
-        response.append(" ".join([e for e in res.error if e]))
+        response.append(f'УТМ:        {res.host}')
+        response.append(f'ФСРАР:      {res.fsrar if res.fsrar else comments.get("fsrar")}')
+        response.append(f'Лицензия:   {"OK" if res.licence else comments.get("licence")}')
+        response.append(f'Рутокен:    {"OK" if res.sign else comments.get("sign")}')
+        response.append(f'Фильтр:     {"OK" if res.filter else comments.get("filter")}')
+        response.append(f'Входящие:   {res.docs_in} {"OK" if res.docs_in <= 5 else comments.get("docs_in")}')
+        response.append(f'Исходящие:  {res.docs_out} {"OK" if res.docs_out <= 5 else comments.get("docs_out")}')
+        response.append(f'Ошибки:     {"ОК" if res.error else " ".join([e for e in res.error if e])}')
 
     else:
         response = errors.get('INCORRECT_DOMAIN_NAME')
