@@ -205,7 +205,6 @@ def send_query_clients_xml(utm: Utm, filename: str):
     try:
         files = {'xml_file': (filename, open(filename, 'rb'), 'application/xml')}
         r = requests.post(utm.get_query_clients_url(), timeout=5, files=files)
-        print(r)
         if ET.fromstring(r.text).find('sign') is None:
             err = ET.fromstring(r.text).find('error').text
         os.remove(filename)
