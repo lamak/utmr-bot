@@ -5,6 +5,7 @@ import socket
 import uuid
 import xml.etree.ElementTree as ET
 from collections import Counter
+from typing import Optional
 
 import requests
 from requests_html import HTMLSession
@@ -74,13 +75,13 @@ class Result:
         self.cheques: str = ''
         self.fsrar: str = ''
         self.title: str = ''
-        self.sign: bool = False
-        self.status: bool = False
-        self.licence: bool = False
-        self.filter: bool = False
         self.error: list = []
-        self.docs_in: int = 0
-        self.docs_out: int = 0
+        self.sign: Optional[bool] = None
+        self.status: Optional[bool] = None
+        self.license: Optional[bool] = None
+        self.filter: Optional[bool] = None
+        self.docs_in: Optional[int] = None
+        self.docs_out: Optional[int] = None
 
 
 def check_docs_count(res: Result):
@@ -91,24 +92,21 @@ def check_docs_count(res: Result):
         counter = len(ET.fromstring(page).findall(elem))
         return counter
 
-    docs_in, docs_out, error = '', '', ''
     url_utm = res.utm.get_utm_url()
     url_in = url_utm + '/opt/out/waybill_v3'
     url_out = url_utm + '/opt/in'
     html_element = 'url'
-    print(url_in, url_out)
 
     try:
         res.docs_in = count_html_elements(url_in, html_element)
         res.docs_out = count_html_elements(url_out, html_element)
 
     except (requests.ConnectionError, requests.ReadTimeout):
-        error = check_utm_availability(res.utm.get_domain_name())
+        res.error.append(check_utm_availability(res.utm.get_domain_name()))
 
     except ET.ParseError:
-        error = errors.get('PARSE_ERROR')
+        res.error.append(errors.get('PARSE_ERROR'))
 
-    res.error.append(error)
     return res
 
 
@@ -176,6 +174,7 @@ def check_sign(res: Result):
 
     send_result = send_query_clients_xml(res.utm, filename)
     if send_result:
+        res.sign = False
         res.error.append(send_result)
     else:
         res.sign = True
@@ -226,14 +225,9 @@ def check_utm_indexpage(res: Result):
         home = home_data.text.split('\n')
 
         # Проверка статус и лицензии
-        if 'Проблема с RSA' not in home:
-            res.status = True
-
-        if 'Лицензия на вид деятельности действует' in home:
-            res.license = True
-
-        if 'Обновление настроек не требуется' in home:
-            res.filter = True
+        res.status = True if 'Проблема с RSA' not in home else False
+        res.license = True if 'Лицензия на вид деятельности действует' in home else False
+        res.filter = True if 'Обновление настроек не требуется' in home else False
 
     except (requests.ConnectionError, requests.ReadTimeout):
         res.error.append('Не удатся получить страницу УТМ')
@@ -310,11 +304,11 @@ def text_message(bot, update):
         res = get_quick_check(Utm(utm_server))
         comments = {
             'fsrar': 'УТМ недоступен',
-            'licence': 'Не действительна',
-            'sign': 'Не удалось подписать документ,проверьте Рутокен',
-            'filter': 'Необходимо обновить настройки',
-            'docs_in': 'Возможно, проблема обмена Супермаг',
-            'docs_out': 'Возможно, нет связи с ФСРАР',
+            'license': 'Не действительна',
+            'sign': 'Проверьте Рутокен',
+            'filter': 'Обновить настройки',
+            'docs_in': 'Проверить обмен Супермаг',
+            'docs_out': 'Проверить связь УТМ с ФСРАР',
         }
 
         if res.fsrar:
@@ -325,12 +319,19 @@ def text_message(bot, update):
         response = list()
         response.append(f'УТМ:        {res.host}')
         response.append(f'ФСРАР:      {res.fsrar if res.fsrar else comments.get("fsrar")}')
-        response.append(f'Рутокен:    {"OK" if res.sign else comments.get("sign")}')
-        response.append(f'Лицензия:   {"OK" if res.licence else comments.get("licence")}')
-        response.append(f'Фильтр:     {"OK" if res.filter else comments.get("filter")}')
-        response.append(f'Входящие:   {res.docs_in} {"OK" if res.docs_in <= 5 else comments.get("docs_in")}')
-        response.append(f'Исходящие:  {res.docs_out} {"OK" if res.docs_out <= 5 else comments.get("docs_out")}')
-        response.append(f'Ошибки:     {"ОК" if res.error else " ".join([e for e in res.error if e])}')
+
+        if res.sign is not None:
+            response.append(f'Рутокен:    {"OK" if res.sign else comments.get("sign")}')
+        if res.license is not None:
+            response.append(f'Лицензия:   {"OK" if res.license else comments.get("license")}')
+        if res.filter is not None:
+            response.append(f'Фильтр:     {"OK" if res.filter else comments.get("filter")}')
+        if res.docs_in is not None:
+            response.append(f'Входящие:   {res.docs_in} {"OK" if res.docs_in <= 5 else comments.get("docs_in")}')
+        if res.docs_out is not None:
+            response.append(f'Исходящие:  {res.docs_out} {"OK" if res.docs_out <= 5 else comments.get("docs_out")}')
+        if res.error:
+            response.append(f'Ошибки:     {" ".join([e for e in res.error if e])}')
 
         add_backticks_to_list(response)
     else:

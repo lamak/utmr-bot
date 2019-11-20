@@ -1,4 +1,4 @@
 lxml
 pysocks
-request_html
+requests_html
 python-telegram-bot
