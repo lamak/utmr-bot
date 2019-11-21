@@ -26,6 +26,7 @@ errors = {
     'ONLINE_NA': 'В сети, УТМ недоступен',
     'OFFLINE': 'Не в сети',
     'NO_UTMS': 'Не найдено УТМ',
+    'NOT IN LIST': 'УТМ не из списка серверов',
 }
 
 
@@ -161,6 +162,8 @@ def get_quick_check(utm: Utm) -> Result:
         result.fsrar = ET.fromstring(res.text).find('CN').text
 
     except (requests.ConnectionError, requests.ReadTimeout):
+        if utm not in get_servers(config.utmlist):
+            result.error.append(errors.get('NOT IN LIST'))
         result.error.append(check_utm_availability(utm.get_domain_name()))
 
     return result
