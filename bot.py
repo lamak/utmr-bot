@@ -88,7 +88,7 @@ def check_docs_count(res: Result):
     """ Подсчет входящих, исходящих документов для диагностики связи УТМ"""
 
     def count_html_elements(url: str, elem: str) -> int:
-        page = requests.get(url, timeout=2).text
+        page = requests.get(url, timeout=10).text
         counter = len(ET.fromstring(page).findall(elem))
         return counter
 
