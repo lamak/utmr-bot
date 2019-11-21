@@ -203,10 +203,12 @@ def send_query_clients_xml(utm: Utm, filename: str):
     err = None
 
     try:
-        files = {'xml_file': (filename, open(filename, 'rb'), 'application/xml')}
+        file = open(filename, 'rb')
+        files = {'xml_file': (filename, file, 'application/xml')}
         r = requests.post(utm.get_query_clients_url(), timeout=5, files=files)
         if ET.fromstring(r.text).find('sign') is None:
             err = ET.fromstring(r.text).find('error').text
+        file.close()
         os.remove(filename)
     except requests.ConnectionError:
         err = check_utm_availability(utm.get_domain_name())
