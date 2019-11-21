@@ -143,7 +143,7 @@ def add_backticks_to_list(results: list) -> list:
     """ Обрамление в код для моноширных списков """
     backticks = '```'
     results.insert(0, backticks)
-    results.insert(len(results), backticks)
+    results.append(backticks)
     return results
 
 
