@@ -58,7 +58,7 @@ class Utm:
 class Result:
     """ Результаты опроса УТМ
     С главной страницы получаем:
-    * Состояние УТМ и лицензии
+    * Состояние УТМ и лицензии  
     * Сроки ключей ГОСТ, PKI
     * Состояние чеков
     * Организация из сертификата ГОСТ
@@ -131,7 +131,7 @@ def check_rdp(host: str) -> bool:
         s.connect((host, 3389))
         s.shutdown(2)
         return True
-    except (ConnectionRefusedError, socket.gaierror):
+    except (ConnectionRefusedError, TimeoutError, socket.gaierror):
         return False
 
 
