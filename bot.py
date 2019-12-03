@@ -111,11 +111,15 @@ def check_docs_count(res: Result):
     return res
 
 
-def get_servers(filename):
+def get_servers(utms: list):
     """ Список УТМ из хостов """
+    return [Utm(host) for host in set(get_hosts(utms))]
+
+
+def get_hosts(filename: str):
+    """ Чтение хостов из файла настроек """
     with open(filename) as f:
-        data = f.read().splitlines()
-        return [Utm(server) for server in set(data)]
+        return f.read().splitlines()
 
 
 def get_md_text(filename: str) -> str:
@@ -162,7 +166,7 @@ def get_quick_check(utm: Utm) -> Result:
         result.fsrar = ET.fromstring(res.text).find('CN').text
 
     except (requests.ConnectionError, requests.ReadTimeout):
-        if utm.hostname not in get_servers(config.utmlist):
+        if utm.hostname not in get_hosts(config.utmlist):
             result.error.append(errors.get('NOT IN LIST'))
         result.error.append(check_utm_availability(utm.get_domain_name()))
 
