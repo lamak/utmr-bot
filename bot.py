@@ -9,15 +9,14 @@ from typing import Optional
 
 import requests
 from requests_html import HTMLSession
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
+from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
+from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext, CallbackQueryHandler, \
+    run_async
 
 import config
 
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-
-updater = Updater(token=config.telegram_token, request_kwargs=config.proxy)
 pattern = re.compile(config.host_name_pattern)
-dispatcher = updater.dispatcher
+# dispatcher = updater.dispatcher
 
 errors = {
     'INCORRECT_DOMAIN_NAME': 'Попробуйте короткое DNS имя, например vl44-srv03',
@@ -246,19 +245,23 @@ def check_utm_indexpage(res: Result):
     return res
 
 
-def start_command(bot, update):
-    bot.send_message(chat_id=update.message.chat_id, text='Введите сервер с УТМ для проверки')
+@run_async
+def start_command(update: Update, context: CallbackContext):
+    context.bot.send_message(chat_id=update.message.chat_id, text='Введите сервер с УТМ для проверки')
 
 
-def help_command(bot, update):
-    bot.send_message(chat_id=update.message.chat_id, text=get_md_text('help.md'), parse_mode='Markdown')
+@run_async
+def help_command(update: Update, context: CallbackContext):
+    context.bot.send_message(chat_id=update.message.chat_id, text=get_md_text('help.md'), parse_mode='Markdown')
 
 
-def faq_command(bot, update):
-    bot.send_message(chat_id=update.message.chat_id, text=get_md_text('faq.md'), parse_mode='Markdown')
+@run_async
+def faq_command(update: Update, context: CallbackContext):
+    context.bot.send_message(chat_id=update.message.chat_id, text=get_md_text('faq.md'), parse_mode='Markdown')
 
 
-def filter_command(bot, update):
+@run_async
+def filter_command(update: Update, context: CallbackContext):
     """ Обновление настроек и фильтров на всех УТМ
     После команды можно указать список УТМ хостов через пробел
     Если не указаны хосты, то выполняется на всех УТМ по списку
@@ -287,10 +290,11 @@ def filter_command(bot, update):
     else:
         res_text = [errors.get('NO_UTMS'), ]
 
-    bot.send_message(chat_id=update.message.chat_id, text=split_in_lines(res_text), parse_mode='Markdown')
+    context.bot.send_message(chat_id=update.message.chat_id, text=split_in_lines(res_text), parse_mode='Markdown')
 
 
-def status_command(bot, update):
+@run_async
+def status_command(update: Update, context: CallbackContext):
     utms = get_servers(config.utmlist)
     results = [get_quick_check(utm) for utm in utms]
     results.sort(key=lambda utm: utm.error)
@@ -302,10 +306,11 @@ def status_command(bot, update):
     text_res = add_backticks_to_list(text_res)
     text_res.insert(len(text_res), f'`OK: {res_counter} Errors: {err_counter}`')
 
-    bot.send_message(chat_id=update.message.chat_id, text=split_in_lines(text_res), parse_mode='Markdown')
+    context.bot.send_message(chat_id=update.message.chat_id, text=split_in_lines(text_res), parse_mode='Markdown')
 
 
-def text_message(bot, update):
+@run_async
+def text_message(update: Update, context: CallbackContext):
     """ Диагностика УТМ по указаноому hostname"""
     utm_server = update.message.text
     if pattern.match(utm_server):
@@ -344,23 +349,55 @@ def text_message(bot, update):
         add_backticks_to_list(response)
     else:
         response = errors.get('INCORRECT_DOMAIN_NAME')
-    bot.send_message(chat_id=update.message.chat_id, text=split_in_lines(response), parse_mode='Markdown')
+
+    log_vars = {
+        1: 'transactions',
+        2: 'transport',
+        3: 'updater',
+    }
+
+    markup = InlineKeyboardMarkup(
+        [[InlineKeyboardButton(val, callback_data=f"{utm_server} {log_idx}") for log_idx, val in log_vars.items()]]
+    )
+    context.bot.send_message(chat_id=update.message.chat_id, text='abc', parse_mode='Markdown',
+                             reply_markup=markup)
 
 
-faq_command_handler = CommandHandler('faq', faq_command)
-help_command_handler = CommandHandler('help', help_command)
-start_command_handler = CommandHandler('start', start_command)
-status_command_handler = CommandHandler('status', status_command)
-filter_command_handler = CommandHandler('filter', filter_command)
-text_message_handler = MessageHandler(Filters.text, text_message)
+@run_async
+def log_request_reply(update: Update, context: CallbackContext):
+    query = update.callback_query
+    chat_id = update.effective_chat.id
 
-dispatcher.add_handler(start_command_handler)
-dispatcher.add_handler(text_message_handler)
-dispatcher.add_handler(help_command_handler)
-dispatcher.add_handler(faq_command_handler)
-dispatcher.add_handler(status_command_handler)
-dispatcher.add_handler(filter_command_handler)
+    if query.data:
+        utm, log_type = query.data.split()
 
-updater.start_polling(clean=True)
+        log_paths = {
+            1: 'transporter/l/transport_transaction.log',
+            2: 'transporter/l/transport_info.log',
+            3: 'updater/l/update.log',
+        }
 
-updater.idle()
+        logfile = f"//{utm}/severotorg.local/c$/utm/{log_paths[int(log_type)]}"
+
+        context.bot.send_document(chat_id=chat_id, caption=utm, document=open(logfile, 'rb'))
+
+
+def main():
+    logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    updater = Updater(token=config.telegram_token, request_kwargs=config.proxy, use_context=True)
+
+    dispatcher = updater.dispatcher
+    dispatcher.add_handler(CallbackQueryHandler(log_request_reply))
+    dispatcher.add_handler(CommandHandler('start', start_command))
+    dispatcher.add_handler(CommandHandler('help', help_command))
+    dispatcher.add_handler(CommandHandler('faq', faq_command))
+    dispatcher.add_handler(CommandHandler('status', status_command))
+    dispatcher.add_handler(CommandHandler('filter', filter_command))
+    dispatcher.add_handler(MessageHandler(Filters.text, text_message))
+
+    updater.start_polling()
+    updater.idle()
+
+
+if __name__ == '__main__':
+    main()
