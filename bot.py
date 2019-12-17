@@ -16,7 +16,6 @@ from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, Callb
 import config
 
 pattern = re.compile(config.host_name_pattern)
-# dispatcher = updater.dispatcher
 
 errors = {
     'INCORRECT_DOMAIN_NAME': 'Попробуйте короткое DNS имя, например vl44-srv03',
