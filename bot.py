@@ -359,7 +359,7 @@ def text_message(update: Update, context: CallbackContext):
     markup = InlineKeyboardMarkup(
         [[InlineKeyboardButton(val, callback_data=f"{utm_server} {log_idx}") for log_idx, val in log_vars.items()]]
     )
-    context.bot.send_message(chat_id=update.message.chat_id, text='abc', parse_mode='Markdown',
+    context.bot.send_message(chat_id=update.message.chat_id, text=split_in_lines(response), parse_mode='Markdown',
                              reply_markup=markup)
 
 
@@ -377,7 +377,7 @@ def log_request_reply(update: Update, context: CallbackContext):
             3: 'updater/l/update.log',
         }
 
-        logfile = f"//{utm}/severotorg.local/c$/utm/{log_paths[int(log_type)]}"
+        logfile = f"//{utm}.severotorg.local/c$/utm/{log_paths[int(log_type)]}"
 
         context.bot.send_document(chat_id=chat_id, caption=utm, document=open(logfile, 'rb'))
 
