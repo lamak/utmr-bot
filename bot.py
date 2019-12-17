@@ -379,7 +379,11 @@ def log_request_reply(update: Update, context: CallbackContext):
 
         logfile = f"//{utm}.severotorg.local/c$/utm/{log_paths[int(log_type)]}"
 
-        context.bot.send_document(chat_id=chat_id, caption=utm, document=open(logfile, 'rb'))
+        try:
+            with open(logfile, 'rb') as log:
+                context.bot.send_document(chat_id=chat_id, caption=utm, document=log)
+        except FileNotFoundError:
+            context.bot.send_message(chat_id=chat_id, text=f'Не удалось прочитать {logfile}')
 
 
 def main():
