@@ -324,9 +324,9 @@ def text_message(update: Update, context: CallbackContext):
         }
 
         if res.fsrar:
-            check_sign(res)
-            check_docs_count(res)
-            check_utm_indexpage(res)
+            res = check_docs_count(res)
+            res = check_sign(res)
+            res = check_utm_indexpage(res)
 
         response = list()
         response.append(f'УТМ:        {res.host}')
