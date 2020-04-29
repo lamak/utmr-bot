@@ -1,4 +1,5 @@
-lxml
 pysocks
 requests_html
 python-telegram-bot
+pymongo
+python-dotenv

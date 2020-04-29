@@ -13,13 +13,13 @@
 - документация по диагностике УТМ
     Команда `/faq`
 
-## Пример настроек в config.py:
-домен указывается с точкой
-domain = '.mydomain.local' 
+## Пример настроек в .env:
+domain=.mydomain.local
 #### токен телеграма полученный от @BotFather
-telegram_token = 'abc...xyz'
+token=abc...xyz
 #### regexp, для проверки входящих сообщений
-re_pattern = "\w+[-]\w+" 
+pattern="\w+[-]\w+" 
 #### список УМТ для быстрого опроса
-    tt01-srv01
-    tt02-srv02 
+mongo=mongo:27017
+#### socks5 прокси, mtproto не поддерживается (urlib)
+proxy=socks5://10.0.0.0:1080

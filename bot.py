@@ -12,11 +12,12 @@ from requests_html import HTMLSession
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext, CallbackQueryHandler, \
     run_async
+from pymongo import MongoClient
+from dotenv import load_dotenv
 
-import config
-
-pattern = re.compile(config.host_name_pattern)
-
+load_dotenv()
+pattern = re.compile(os.environ.get('pattern'))
+mongo = MongoClient(os.environ.get('mongo', 'localhost:27017'))
 errors = {
     'INCORRECT_DOMAIN_NAME': 'Попробуйте короткое DNS имя, например vl44-srv03',
     'PARSE_ERROR': 'Не найдены элементы на странице',
@@ -35,7 +36,7 @@ class Utm:
         self.hostname: str = hostname
 
     def get_domain_name(self) -> str:
-        return self.hostname + config.domain
+        return self.hostname + os.environ.get('domain', '.local')
 
     def get_utm_url(self) -> str:
         return f'http://{self.get_domain_name()}:8080'
@@ -111,7 +112,7 @@ def check_docs_count(res: Result):
 
 def get_servers(utms: list):
     """ Список УТМ из хостов """
-    return [Utm(host) for host in set(get_hosts(utms))]
+    return [Utm(host) for host in set(get_mongo_hosts())]
 
 
 def get_hosts(filename: str):
@@ -119,6 +120,9 @@ def get_hosts(filename: str):
     with open(filename) as f:
         return f.read().splitlines()
 
+def get_mongo_hosts():
+    server_list = mongo.utmr.utm.find({'active': True}, {'_id': 0, 'host': 1})
+    return [el['host'] for el in server_list]
 
 def get_md_text(filename: str) -> str:
     """ Представление файлов для справки """
@@ -164,7 +168,7 @@ def get_quick_check(utm: Utm) -> Result:
         result.fsrar = ET.fromstring(res.text).find('CN').text
 
     except (requests.ConnectionError, requests.ReadTimeout):
-        if utm.hostname not in get_hosts(config.utmlist):
+        if utm.hostname not in get_mongo_hosts():
             result.error.append(errors.get('NOT IN LIST'))
         result.error.append(check_utm_availability(utm.get_domain_name()))
 
@@ -193,7 +197,7 @@ def make_query_clients_xml(fsrar: str):
     filename = None
 
     try:
-        tree = ET.parse(config.queryclients_xml)
+        tree = ET.parse('query.xml')
         root = tree.getroot()
         root[0][0].text, root[1][0][0][0][1].text = fsrar, fsrar
         filename = uuid.uuid4().__str__() + '.xml'
@@ -214,9 +218,11 @@ def send_query_clients_xml(utm: Utm, filename: str):
         if ET.fromstring(r.text).find('sign') is None:
             err = ET.fromstring(r.text).find('error').text
         file.close()
-        os.remove(filename)
+    
     except requests.ConnectionError:
         err = check_utm_availability(utm.get_domain_name())
+    
+    os.remove(filename)
 
     return err
 
@@ -268,7 +274,7 @@ def filter_command(update: Update, context: CallbackContext):
     args = update.message.text.split()
     args.pop(0)
 
-    utms = get_servers(config.utmlist) if args == ['all'] else [Utm(arg) for arg in set(args) if pattern.match(arg)]
+    utms = get_servers(get_mongo_hosts()) if args == ['all'] else [Utm(arg) for arg in set(args) if pattern.match(arg)]
     if utms:
         results = {}
         for utm in utms:
@@ -294,7 +300,7 @@ def filter_command(update: Update, context: CallbackContext):
 
 @run_async
 def status_command(update: Update, context: CallbackContext):
-    utms = get_servers(config.utmlist)
+    utms = get_servers(get_mongo_hosts())
     results = [get_quick_check(utm) for utm in utms]
     results.sort(key=lambda utm: utm.error)
     err_counter = len([utm for utm in results if utm.error != []])
@@ -387,7 +393,10 @@ def log_request_reply(update: Update, context: CallbackContext):
 
 def main():
     logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    updater = Updater(token=config.telegram_token, request_kwargs=config.proxy, use_context=True)
+    updater = Updater(
+        use_context=True,
+        token=os.environ.get('token'),
+        request_kwargs={'proxy_url': os.environ.get('proxy')})
 
     dispatcher = updater.dispatcher
     dispatcher.add_handler(CallbackQueryHandler(log_request_reply))
