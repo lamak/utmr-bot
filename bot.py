@@ -392,11 +392,13 @@ def log_request_reply(update: Update, context: CallbackContext):
 
 
 def main():
+    proxy = os.environ.get('proxy')
+    print(f'Using proxy: {proxy}')
     logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
     updater = Updater(
         use_context=True,
         token=os.environ.get('token'),
-        request_kwargs={'proxy_url': os.environ.get('proxy')})
+        request_kwargs={'proxy_url': proxy})
 
     dispatcher = updater.dispatcher
     dispatcher.add_handler(CallbackQueryHandler(log_request_reply))
